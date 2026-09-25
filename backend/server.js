@@ -5,7 +5,12 @@ const axios = require('axios');
 const cron = require('node-cron');
 const mongoose = require('mongoose');
 const { Client, GatewayIntentBits, REST, Routes, EmbedBuilder, AttachmentBuilder } = require('discord.js');
-const { createCanvas, loadImage } = require('@napi-rs/canvas'); // 이미지 생성 라이브러리 추가
+const { createCanvas, loadImage } = require('@napi-rs/canvas');
+const { createCanvas, loadImage, GlobalFonts } = require('@napi-rs/canvas');
+const path = require('path');
+
+// 프로젝트 폴더 내의 맑은 고딕 폰트 등록
+GlobalFonts.registerFromPath(path.join(__dirname, 'fonts/malgun.ttf'), 'MalgunGothic');
 
 const app = express();
 app.use(cors());
@@ -86,12 +91,11 @@ cron.schedule('*/5 * * * *', async () => {
 });
 
 // ==========================================
-// 4. 디스코드 봇 (/전적 - 상세 스탯 및 맵 배경 이미지 카드)
+// 4. 디스코드 봇 (슬래시 명령어 전체)
 // ==========================================
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 const rest = new REST({ version: '10' }).setToken(DISCORD_BOT_TOKEN);
 
-// 발로란트 맵 배경화면(Splash) URL 데이터베이스
 const MAP_IMAGES = {
   "Ascent": "https://media.valorant-api.com/maps/7eaecc1b-4337-bbf6-6ab9-04b8f06b3319/splash.png",
   "Split": "https://media.valorant-api.com/maps/d960549e-485c-e861-8d71-aa9d1aed12a2/splash.png",
@@ -106,7 +110,6 @@ const MAP_IMAGES = {
   "Abyss": "https://media.valorant-api.com/maps/224b0a95-48b9-f703-1bd8-67aca101a61f/splash.png"
 };
 
-// 둥근 모서리 박스를 그리는 함수
 function drawRoundRect(ctx, x, y, width, height, radius) {
   ctx.beginPath();
   ctx.moveTo(x + radius, y);
@@ -124,19 +127,27 @@ function drawRoundRect(ctx, x, y, width, height, radius) {
 
 client.once('ready', async () => {
   console.log(`디스코드 봇 준비 완료!`);
-  await rest.put(Routes.applicationCommands(DISCORD_CLIENT_ID), { body: [{
-    name: '전적', description: '발로란트 현재 티어와 최근 매치 세부 정보를 카드로 보여줍니다.',
-    options: [
-      { name: '닉네임', type: 3, description: '발로란트 닉네임', required: true },
-      { name: '태그', type: 3, description: '태그 (예: KR1)', required: true }
-    ]
-  }]});
+  await rest.put(Routes.applicationCommands(DISCORD_CLIENT_ID), { body: [
+    {
+      name: '전적', description: '발로란트 현재 티어와 최근 매치 세부 정보를 카드로 보여줍니다.',
+      options: [
+        { name: '닉네임', type: 3, description: '발로란트 닉네임', required: true },
+        { name: '태그', type: 3, description: '태그 (예: KR1)', required: true }
+      ]
+    },
+    { name: '헤샷순위', description: '웹 대시보드에 연동된 유저들의 헤드샷 명중률 순위를 보여줍니다.' },
+    { name: '킬뎃순위', description: '웹 대시보드에 연동된 유저들의 KDA 순위를 보여줍니다.' },
+    { name: '이번주의버스기사', description: '이번 주에 가장 높은 KDA를 기록한 최고의 버스 기사를 발표합니다!' }
+  ]});
 });
 
 client.on('interactionCreate', async interaction => {
   if (!interaction.isChatInputCommand()) return;
 
-  if (interaction.commandName === '전적') {
+  const { commandName } = interaction;
+
+  // 1. /전적 명령어 (개인 이미지 카드)
+  if (commandName === '전적') {
     await interaction.deferReply(); 
     const name = interaction.options.getString('닉네임');
     const tag = interaction.options.getString('태그');
@@ -171,50 +182,41 @@ client.on('interactionCreate', async interaction => {
           resultColor = isWin ? "#00d26a" : "#ff4655";
         }
 
-        // 캔버스 생성 (800x450)
         const canvas = createCanvas(800, 450);
         const ctx = canvas.getContext('2d');
 
-        // 배경 맵 이미지 로드 및 그리기
         const bgUrl = MAP_IMAGES[mapName] || MAP_IMAGES["Ascent"];
         const bg = await loadImage(bgUrl);
         ctx.drawImage(bg, 0, -50, 800, 550);
 
-        // 반투명한 검은색 배경 박스
         ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
         drawRoundRect(ctx, 40, 30, 720, 390, 20);
 
-        // 닉네임
         ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 38px sans-serif';
+        ctx.font = 'bold 38px MalgunGothic';
         ctx.fillText(`${name} #${tag}`, 70, 85);
 
-        // 최근 맵 이름 (영문 표기로 폰트 깨짐 방지)
         ctx.fillStyle = '#aaaaaa';
-        ctx.font = '20px sans-serif';
+        ctx.font = '20px MalgunGothic';
         ctx.fillText(`Recent Map: ${mapName}`, 70, 120);
 
-        // 승리/패배 상태 표시
         ctx.fillStyle = resultColor;
-        ctx.font = 'bold 22px sans-serif';
+        ctx.font = 'bold 22px MalgunGothic';
         ctx.fillText(resultStr, 610, 85);
 
-        // 티어 아이콘
         try {
           const tierIcon = await loadImage(mmrData.images.large);
           ctx.drawImage(tierIcon, 70, 145, 120, 120);
-        } catch (e) { console.log('티어 이미지 로드 실패'); }
+        } catch (e) {}
 
-        // 티어 이름 및 랭크 점수(RR)
         ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 32px sans-serif';
+        ctx.font = 'bold 32px MalgunGothic';
         ctx.fillText(`${mmrData.currenttierpatched}`, 210, 190);
 
         ctx.fillStyle = '#ff4655';
-        ctx.font = 'bold 26px sans-serif';
+        ctx.font = 'bold 26px MalgunGothic';
         ctx.fillText(`${mmrData.ranking_in_tier} RR`, 210, 230);
 
-        // 구분선
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
         ctx.lineWidth = 2;
         ctx.beginPath();
@@ -222,31 +224,91 @@ client.on('interactionCreate', async interaction => {
         ctx.lineTo(730, 285);
         ctx.stroke();
 
-        // KDA 통계 표시
         ctx.fillStyle = '#aaaaaa';
-        ctx.font = '16px sans-serif';
+        ctx.font = '16px MalgunGothic';
         ctx.fillText('RECENT KDA', 70, 320);
         ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 24px sans-serif';
+        ctx.font = 'bold 24px MalgunGothic';
         ctx.fillText(kdaStr, 70, 355);
 
-        // 헤드샷 비율 표시
         ctx.fillStyle = '#aaaaaa';
-        ctx.font = '16px sans-serif';
+        ctx.font = '16px MalgunGothic';
         ctx.fillText('HEADSHOT', 500, 320);
         ctx.fillStyle = '#00d26a';
-        ctx.font = 'bold 24px sans-serif';
+        ctx.font = 'bold 24px MalgunGothic';
         ctx.fillText(hsStr, 500, 355);
 
-        // 디스코드로 이미지 전송
         const attachment = new AttachmentBuilder(canvas.toBuffer('image/png'), { name: 'valorant-stats.png' });
         await interaction.editReply({ content: `**${name}**님의 최근 전적 카드입니다.`, files: [attachment] });
       } else {
-        await interaction.editReply('전적 데이터를 가져오지 못했습니다. 최근 경쟁전 기록이 있는지 확인해 주세요.');
+        await interaction.editReply('❌ 전적 데이터를 가져오지 못했습니다.');
       }
     } catch (error) {
-      console.error(error);
       await interaction.editReply('❌ 전적을 찾을 수 없거나 오류가 발생했습니다.');
+    }
+  }
+
+  // 2. /헤샷순위 명령어
+  else if (commandName === '헤샷순위') {
+    await interaction.deferReply();
+    try {
+      const users = await User.find({ riotId: { $ne: null } }).sort({ 'stats.hsPercentage': -1 });
+      if (users.length === 0) {
+        return interaction.editReply('⚠️ 아직 대시보드에 연동된 유저가 없습니다!');
+      }
+
+      const embed = new EmbedBuilder()
+        .setColor('#00d26a')
+        .setTitle('🎯 서버 헤드샷 명중률 순위 (Top 연동 유저)')
+        .setDescription(users.map((u, i) => `**${i + 1}위** | ${u.username} (${u.riotId}#${u.tagLine}) — **${u.stats?.hsPercentage || 0}%**`).join('\n'))
+        .setFooter({ text: 'ValoDashboard 연동 기준' });
+
+      await interaction.editReply({ embeds: [embed] });
+    } catch (error) {
+      await interaction.editReply('❌ 순위를 불러오는 중 오류가 발생했습니다.');
+    }
+  }
+
+  // 3. /킬뎃순위 명령어
+  else if (commandName === '킬뎃순위') {
+    await interaction.deferReply();
+    try {
+      const users = await User.find({ riotId: { $ne: null } }).sort({ 'stats.kda': -1 });
+      if (users.length === 0) {
+        return interaction.editReply('⚠️ 아직 대시보드에 연동된 유저가 없습니다!');
+      }
+
+      const embed = new EmbedBuilder()
+        .setColor('#ff4655')
+        .setTitle('⚔️ 서버 KDA 순위 (Top 연동 유저)')
+        .setDescription(users.map((u, i) => `**${i + 1}위** | ${u.username} (${u.riotId}#${u.tagLine}) — **KDA ${u.stats?.kda || 0}점**`).join('\n'))
+        .setFooter({ text: 'ValoDashboard 연동 기준' });
+
+      await interaction.editReply({ embeds: [embed] });
+    } catch (error) {
+      await interaction.editReply('❌ 순위를 불러오는 중 오류가 발생했습니다.');
+    }
+  }
+
+  // 4. /이번주의버스기사 명령어
+  else if (commandName === '이번주의버스기사') {
+    await interaction.deferReply();
+    try {
+      const users = await User.find({ riotId: { $ne: null } }).sort({ 'stats.kda': -1 });
+      if (users.length === 0 || !users[0].riotId) {
+        return interaction.editReply('⚠️ 연동된 유저가 없어 버스 기사를 선정할 수 없습니다!');
+      }
+
+      const driver = users[0]; // KDA가 가장 높은 유저
+      const embed = new EmbedBuilder()
+        .setColor('#ffd700') // 황금색
+        .setTitle('👑 [이번 주 서버 최고의 버스 기사]')
+        .setDescription(`이번 주 가장 강력한 무력을 뽐낸 기사님은 바로...\n\n🎉 **${driver.username}** (${driver.riotId}#${driver.tagLine}) 님입니다!\n\n🔥 **기록된 평균 KDA:** **${driver.stats?.kda || 0}점**`)
+        .setFooter({ text: '팀원을 승리로 이끄는 당신이 진정한 버스 기사!' });
+
+      await interaction.editReply({ embeds: [embed] });
+    } catch (error) {
+      await interaction.editReply('❌ 버스 기사를 선정하는 중 오류가 발생했습니다.');
     }
   }
 });
