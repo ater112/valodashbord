@@ -88,10 +88,10 @@ cron.schedule('*/5 * * * *', async () => {
 // ==========================================
 // 4. 디스코드 봇 (슬래시 명령어 전체)
 // ==========================================
-const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+// 음성 채널 감지를 위해 GuildVoiceStates 권한 추가
+const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates] });
 const rest = new REST({ version: '10' }).setToken(DISCORD_BOT_TOKEN);
 
-// 발로란트 최신 맵 배경화면(Splash) URL 데이터베이스 (써밋, 어비스 등 전 맵 포함)
 const MAP_IMAGES = {
   "Ascent": "https://media.valorant-api.com/maps/7eaecc1b-4337-bbf6-6ab9-04b8f06b3319/splash.png",
   "Split": "https://media.valorant-api.com/maps/d960549e-485c-e861-8d71-aa9d1aed12a2/splash.png",
@@ -133,7 +133,8 @@ client.once('ready', async () => {
     },
     { name: '헤샷순위', description: '웹 대시보드에 연동된 유저들의 헤드샷 명중률 순위를 보여줍니다.' },
     { name: '킬뎃순위', description: '웹 대시보드에 연동된 유저들의 KDA 순위를 보여줍니다.' },
-    { name: '이번주의버스기사', description: '이번 주에 가장 높은 KDA를 기록한 최고의 버스 기사를 발표합니다!' }
+    { name: '이번주의버스기사', description: '이번 주에 가장 높은 KDA를 기록한 최고의 버스 기사를 발표합니다!' },
+    { name: '팀랜덤배정', description: '현재 본인이 접속해 있는 음성 채널 인원을 공/수 팀으로 무작위 배정합니다.' }
   ]});
 });
 
@@ -141,6 +142,7 @@ client.on('interactionCreate', async interaction => {
   if (!interaction.isChatInputCommand()) return;
   const { commandName } = interaction;
 
+  // 1. /전적 명령어
   if (commandName === '전적') {
     await interaction.deferReply(); 
     const name = interaction.options.getString('닉네임');
@@ -179,45 +181,36 @@ client.on('interactionCreate', async interaction => {
           resultColor = isWin ? "#00d26a" : "#ff4655";
         }
 
-        // 프리미엄 캔버스 제작 (800x450)
         const canvas = createCanvas(800, 450);
         const ctx = canvas.getContext('2d');
 
-        // 배경 맵 이미지 로드 및 오버레이
         const bgUrl = MAP_IMAGES[mapName] || MAP_IMAGES["Ascent"];
         const bg = await loadImage(bgUrl);
         ctx.drawImage(bg, 0, -50, 800, 550);
 
-        // 어두운 프리미엄 그라데이션 박스
         ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
         drawRoundRect(ctx, 35, 25, 730, 400, 16);
 
-        // 상단 포인트 라인 (승리/패배 컬러)
         ctx.fillStyle = resultColor;
         ctx.fillRect(35, 25, 730, 6);
 
-        // 유저 닉네임
         ctx.fillStyle = '#ffffff';
         ctx.font = 'bold 36px sans-serif';
         ctx.fillText(`${name} #${tag}`, 65, 85);
 
-        // 최근 맵 & 플레이 요원 정보
         ctx.fillStyle = '#94a3b8';
         ctx.font = '18px sans-serif';
         ctx.fillText(`MAP: ${mapName}   |   AGENT: ${agentName}`, 65, 118);
 
-        // 승리 / 패배 배지 텍스트
         ctx.fillStyle = resultColor;
         ctx.font = 'bold 22px sans-serif';
         ctx.fillText(resultStr, 625, 85);
 
-        // 티어 아이콘
         try {
           const tierIcon = await loadImage(mmrData.images.large);
           ctx.drawImage(tierIcon, 65, 145, 110, 110);
         } catch (e) {}
 
-        // 티어 등급 및 랭크 포인트(RR)
         ctx.fillStyle = '#ffffff';
         ctx.font = 'bold 30px sans-serif';
         ctx.fillText(`${mmrData.currenttierpatched}`, 195, 190);
@@ -226,7 +219,6 @@ client.on('interactionCreate', async interaction => {
         ctx.font = 'bold 24px sans-serif';
         ctx.fillText(`${mmrData.ranking_in_tier} RR`, 195, 228);
 
-        // 하단 통계 영역 구분선
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
         ctx.lineWidth = 2;
         ctx.beginPath();
@@ -234,7 +226,6 @@ client.on('interactionCreate', async interaction => {
         ctx.lineTo(735, 280);
         ctx.stroke();
 
-        // KDA 통계 블록
         ctx.fillStyle = '#94a3b8';
         ctx.font = '15px sans-serif';
         ctx.fillText('RECENT KDA', 65, 320);
@@ -242,7 +233,6 @@ client.on('interactionCreate', async interaction => {
         ctx.font = 'bold 24px sans-serif';
         ctx.fillText(kdaStr, 65, 358);
 
-        // 헤드샷 명중률 통계 블록
         ctx.fillStyle = '#94a3b8';
         ctx.font = '15px sans-serif';
         ctx.fillText('HEADSHOT RATE', 470, 320);
@@ -260,6 +250,7 @@ client.on('interactionCreate', async interaction => {
     }
   }
 
+  // 2. /헤샷순위 명령어
   else if (commandName === '헤샷순위') {
     await interaction.deferReply();
     try {
@@ -275,6 +266,7 @@ client.on('interactionCreate', async interaction => {
     }
   }
 
+  // 3. /킬뎃순위 명령어
   else if (commandName === '킬뎃순위') {
     await interaction.deferReply();
     try {
@@ -290,6 +282,7 @@ client.on('interactionCreate', async interaction => {
     }
   }
 
+  // 4. /이번주의버스기사 명령어
   else if (commandName === '이번주의버스기사') {
     await interaction.deferReply();
     try {
@@ -303,6 +296,47 @@ client.on('interactionCreate', async interaction => {
       await interaction.editReply({ embeds: [embed] });
     } catch (error) {
       await interaction.editReply('❌ 버스 기사를 선정하는 중 오류가 발생했습니다.');
+    }
+  }
+
+  // 5. /팀랜덤배정 명령어
+  else if (commandName === '팀랜덤배정') {
+    await interaction.deferReply();
+    try {
+      const member = interaction.member;
+      const voiceChannel = member.voice.channel;
+
+      if (!voiceChannel) {
+        return interaction.editReply('⚠️ 먼저 음성 채널에 접속한 상태에서 명령어를 사용해 주세요!');
+      }
+
+      // 음성 채널에 있는 유저 목록 가져오기 (봇 제외)
+      const members = Array.from(voiceChannel.members.values()).filter(m => !m.user.bot);
+
+      if (members.length < 2) {
+        return interaction.editReply('⚠️ 내전을 진행하려면 음성 채널에 최소 2명 이상이 있어야 합니다!');
+      }
+
+      // 무작위로 섞기 (Shuffle)
+      const shuffled = members.sort(() => Math.random() - 0.5);
+      
+      const midPoint = Math.ceil(shuffled.length / 2);
+      const attackTeam = shuffled.slice(0, midPoint);
+      const defenseTeam = shuffled.slice(midPoint);
+
+      const embed = new EmbedBuilder()
+        .setColor('#3b82f6')
+        .setTitle('⚖️ 발로란트 무작위 내전 팀 배정')
+        .setDescription(`참가 인원: **${members.length}명** (음성 채널: ${voiceChannel.name})\n`)
+        .addFields(
+          { name: '🔵 공격팀 (Attackers)', value: attackTeam.map(m => `• ${m.user.username}`).join('\n') || '없음', inline: true },
+          { name: '🔴 방어팀 (Defenders)', value: defenseTeam.map(m => `• ${m.user.username}`).join('\n') || '없음', inline: true }
+        )
+        .setFooter({ text: '즐거운 내전 되세요!' });
+
+      await interaction.editReply({ embeds: [embed] });
+    } catch (error) {
+      await interaction.editReply('❌ 팀을 배정하는 중 오류가 발생했습니다.');
     }
   }
 });
