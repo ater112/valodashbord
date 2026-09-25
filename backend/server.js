@@ -202,4 +202,6 @@ client.on('interactionCreate', async interaction => {
   }
 });
 
+client.login(DISCORD_BOT_TOKEN);
+
 app.listen(5000, () => console.log('Backend server running on port 5000'));
