@@ -4,17 +4,8 @@ const cors = require('cors');
 const axios = require('axios');
 const cron = require('node-cron');
 const mongoose = require('mongoose');
-const path = require('path');
 const { Client, GatewayIntentBits, REST, Routes, EmbedBuilder, AttachmentBuilder } = require('discord.js');
-const { createCanvas, loadImage, GlobalFonts } = require('@napi-rs/canvas'); // 중복 선언 방지 통합
-
-// 맑은 고딕 한글 폰트 등록
-try {
-  GlobalFonts.registerFromPath(path.join(__dirname, 'fonts/malgun.ttf'), 'MalgunGothic');
-  console.log('한글 폰트(MalgunGothic) 등록 완료');
-} catch (e) {
-  console.log('폰트 파일 로드 실패 (fonts/malgun.ttf 경로를 확인해주세요)');
-}
+const { createCanvas, loadImage } = require('@napi-rs/canvas');
 
 const app = express();
 app.use(cors());
@@ -87,7 +78,7 @@ cron.schedule('*/5 * * * *', async () => {
           user.lastMatchId = latestMatch.metadata.matchid;
           user.stats = { kda: parseFloat(kda), hsPercentage };
           await user.save();
-          if (DISCORD_WEBHOOK_URL) await axios.post(DISCORD_WEBHOOK_URL, { content: `🎮 **${user.username}**님이 매치를 완료했습니다!\n**결과:** ${isWin ? "🔵 승리" : "🔴 패배"} (${latestMatch.metadata.map})\n**KDA:** ${kills}/${deaths}/${assists} (${kda})\n**헤드샷:** ${hsPercentage}%` });
+          if (DISCORD_WEBHOOK_URL) await axios.post(DISCORD_WEBHOOK_URL, { content: `🎮 **${user.username}**님이 매치를 완료했습니다!\n**결과:** ${isWin ? "🔵 승리" : "🔴 패배"} (${latestMatch.metadata.map} / ${playerData.character})\n**KDA:** ${kills}/${deaths}/${assists} (${kda})\n**헤드샷:** ${hsPercentage}%` });
         }
       }
     }
@@ -95,11 +86,12 @@ cron.schedule('*/5 * * * *', async () => {
 });
 
 // ==========================================
-// 4. 디스코드 봇 (슬래시 명령어 전체 - 한글 전적 카드 포함)
+// 4. 디스코드 봇 (슬래시 명령어 전체)
 // ==========================================
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 const rest = new REST({ version: '10' }).setToken(DISCORD_BOT_TOKEN);
 
+// 발로란트 최신 맵 배경화면(Splash) URL 데이터베이스 (써밋, 어비스 등 전 맵 포함)
 const MAP_IMAGES = {
   "Ascent": "https://media.valorant-api.com/maps/7eaecc1b-4337-bbf6-6ab9-04b8f06b3319/splash.png",
   "Split": "https://media.valorant-api.com/maps/d960549e-485c-e861-8d71-aa9d1aed12a2/splash.png",
@@ -167,7 +159,8 @@ client.on('interactionCreate', async interaction => {
         
         let kdaStr = "0 / 0 / 0 (0.00)";
         let hsStr = "0%";
-        let resultStr = "승리";
+        let agentName = "Unknown";
+        let resultStr = "VICTORY";
         let resultColor = "#00d26a";
 
         if (playerData) {
@@ -179,72 +172,86 @@ client.on('interactionCreate', async interaction => {
           const hsPerc = totalHits === 0 ? 0 : Math.round((headshots / totalHits) * 100);
           hsStr = `${hsPerc}%`;
 
+          agentName = playerData.character || "Unknown";
+
           const isWin = matchData.teams[playerData.team.toLowerCase()]?.has_won || false;
-          resultStr = isWin ? "승리" : "패배";
+          resultStr = isWin ? "VICTORY" : "DEFEAT";
           resultColor = isWin ? "#00d26a" : "#ff4655";
         }
 
+        // 프리미엄 캔버스 제작 (800x450)
         const canvas = createCanvas(800, 450);
         const ctx = canvas.getContext('2d');
 
+        // 배경 맵 이미지 로드 및 오버레이
         const bgUrl = MAP_IMAGES[mapName] || MAP_IMAGES["Ascent"];
         const bg = await loadImage(bgUrl);
         ctx.drawImage(bg, 0, -50, 800, 550);
 
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
-        drawRoundRect(ctx, 40, 30, 720, 390, 20);
+        // 어두운 프리미엄 그라데이션 박스
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+        drawRoundRect(ctx, 35, 25, 730, 400, 16);
 
-        // 닉네임 (한글 폰트 적용)
-        ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 38px MalgunGothic';
-        ctx.fillText(`${name} #${tag}`, 70, 85);
-
-        // 최근 맵 이름 (한글)
-        ctx.fillStyle = '#aaaaaa';
-        ctx.font = '20px MalgunGothic';
-        ctx.fillText(`최근 맵: ${mapName}`, 70, 120);
-
-        // 승리 / 패배
+        // 상단 포인트 라인 (승리/패배 컬러)
         ctx.fillStyle = resultColor;
-        ctx.font = 'bold 22px MalgunGothic';
-        ctx.fillText(resultStr, 640, 85);
+        ctx.fillRect(35, 25, 730, 6);
 
+        // 유저 닉네임
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 36px sans-serif';
+        ctx.fillText(`${name} #${tag}`, 65, 85);
+
+        // 최근 맵 & 플레이 요원 정보
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '18px sans-serif';
+        ctx.fillText(`MAP: ${mapName}   |   AGENT: ${agentName}`, 65, 118);
+
+        // 승리 / 패배 배지 텍스트
+        ctx.fillStyle = resultColor;
+        ctx.font = 'bold 22px sans-serif';
+        ctx.fillText(resultStr, 625, 85);
+
+        // 티어 아이콘
         try {
           const tierIcon = await loadImage(mmrData.images.large);
-          ctx.drawImage(tierIcon, 70, 145, 120, 120);
+          ctx.drawImage(tierIcon, 65, 145, 110, 110);
         } catch (e) {}
 
+        // 티어 등급 및 랭크 포인트(RR)
         ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 32px MalgunGothic';
-        ctx.fillText(`${mmrData.currenttierpatched}`, 210, 190);
+        ctx.font = 'bold 30px sans-serif';
+        ctx.fillText(`${mmrData.currenttierpatched}`, 195, 190);
 
         ctx.fillStyle = '#ff4655';
-        ctx.font = 'bold 26px MalgunGothic';
-        ctx.fillText(`${mmrData.ranking_in_tier} RR`, 210, 230);
+        ctx.font = 'bold 24px sans-serif';
+        ctx.fillText(`${mmrData.ranking_in_tier} RR`, 195, 228);
 
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+        // 하단 통계 영역 구분선
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
         ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.moveTo(70, 285);
-        ctx.lineTo(730, 285);
+        ctx.moveTo(65, 280);
+        ctx.lineTo(735, 280);
         ctx.stroke();
 
-        ctx.fillStyle = '#aaaaaa';
-        ctx.font = '16px MalgunGothic';
-        ctx.fillText('최근 KDA', 70, 320);
+        // KDA 통계 블록
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '15px sans-serif';
+        ctx.fillText('RECENT KDA', 65, 320);
         ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 24px MalgunGothic';
-        ctx.fillText(kdaStr, 70, 355);
+        ctx.font = 'bold 24px sans-serif';
+        ctx.fillText(kdaStr, 65, 358);
 
-        ctx.fillStyle = '#aaaaaa';
-        ctx.font = '16px MalgunGothic';
-        ctx.fillText('헤드샷 명중률', 500, 320);
+        // 헤드샷 명중률 통계 블록
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '15px sans-serif';
+        ctx.fillText('HEADSHOT RATE', 470, 320);
         ctx.fillStyle = '#00d26a';
-        ctx.font = 'bold 24px MalgunGothic';
-        ctx.fillText(hsStr, 500, 355);
+        ctx.font = 'bold 24px sans-serif';
+        ctx.fillText(hsStr, 470, 358);
 
         const attachment = new AttachmentBuilder(canvas.toBuffer('image/png'), { name: 'valorant-stats.png' });
-        await interaction.editReply({ content: `**${name}**님의 최근 전적 카드입니다.`, files: [attachment] });
+        await interaction.editReply({ content: `✨ **${name}**님의 프리미엄 전적 카드입니다.`, files: [attachment] });
       } else {
         await interaction.editReply('❌ 전적 데이터를 가져오지 못했습니다.');
       }
