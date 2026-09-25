@@ -27,7 +27,7 @@ const userSchema = new mongoose.Schema({
 const User = mongoose.model('User', userSchema);
 
 // ==========================================
-// 2. 디스코드 로그인 및 리더보드 웹 API (기존과 동일)
+// 2. 디스코드 로그인 및 리더보드 웹 API
 // ==========================================
 app.get('/api/auth/discord', (req, res) => res.redirect(`https://discord.com/api/oauth2/authorize?client_id=${DISCORD_CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=code&scope=identify`));
 app.get('/api/auth/discord/callback', async (req, res) => {
@@ -86,7 +86,7 @@ cron.schedule('*/5 * * * *', async () => {
 });
 
 // ==========================================
-// 4. 디스코드 봇 (/전적 - 이미지 생성 버전)
+// 4. 디스코드 봇 (/전적 - 상세 스탯 및 맵 배경 이미지 카드)
 // ==========================================
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 const rest = new REST({ version: '10' }).setToken(DISCORD_BOT_TOKEN);
@@ -125,7 +125,7 @@ function drawRoundRect(ctx, x, y, width, height, radius) {
 client.once('ready', async () => {
   console.log(`디스코드 봇 준비 완료!`);
   await rest.put(Routes.applicationCommands(DISCORD_CLIENT_ID), { body: [{
-    name: '전적', description: '발로란트 현재 티어와 최근 매치 정보를 카드로 보여줍니다.',
+    name: '전적', description: '발로란트 현재 티어와 최근 매치 세부 정보를 카드로 보여줍니다.',
     options: [
       { name: '닉네임', type: 3, description: '발로란트 닉네임', required: true },
       { name: '태그', type: 3, description: '태그 (예: KR1)', required: true }
@@ -142,9 +142,7 @@ client.on('interactionCreate', async interaction => {
     const tag = interaction.options.getString('태그');
 
     try {
-      // 1. 티어 및 점수 데이터 가져오기
       const mmrRes = await axios.get(`https://api.henrikdev.xyz/valorant/v1/mmr/kr/${encodeURIComponent(name)}/${encodeURIComponent(tag)}`, { headers: { Authorization: HENRIK_API_KEY } });
-      // 2. 최근 1게임 매치 데이터 가져오기 (맵 이름 및 플레이 데이터 확인용)
       const matchRes = await axios.get(`https://api.henrikdev.xyz/valorant/v3/matches/kr/${encodeURIComponent(name)}/${encodeURIComponent(tag)}?size=1`, { headers: { Authorization: HENRIK_API_KEY } });
 
       if (mmrRes.data.status === 200 && matchRes.data.status === 200 && matchRes.data.data.length > 0) {
@@ -152,51 +150,102 @@ client.on('interactionCreate', async interaction => {
         const matchData = matchRes.data.data[0];
         const mapName = matchData.metadata.map;
 
-        // 캔버스 크기 설정 (800x450 비율)
+        const playerData = matchData.players.all_players.find(p => p.name.toLowerCase() === name.toLowerCase() && p.tag.toLowerCase() === tag.toLowerCase());
+        
+        let kdaStr = "0 / 0 / 0 (0.00)";
+        let hsStr = "0%";
+        let resultStr = "VICTORY";
+        let resultColor = "#00d26a";
+
+        if (playerData) {
+          const { kills, deaths, assists, headshots, bodyshots, legshots } = playerData.stats;
+          const kda = deaths === 0 ? (kills + assists).toFixed(2) : ((kills + assists) / deaths).toFixed(2);
+          kdaStr = `${kills} / ${deaths} / ${assists} (${kda})`;
+
+          const totalHits = headshots + bodyshots + legshots;
+          const hsPerc = totalHits === 0 ? 0 : Math.round((headshots / totalHits) * 100);
+          hsStr = `${hsPerc}%`;
+
+          const isWin = matchData.teams[playerData.team.toLowerCase()]?.has_won || false;
+          resultStr = isWin ? "VICTORY" : "DEFEAT";
+          resultColor = isWin ? "#00d26a" : "#ff4655";
+        }
+
+        // 캔버스 생성 (800x450)
         const canvas = createCanvas(800, 450);
         const ctx = canvas.getContext('2d');
 
-        // 배경 맵 이미지 로드 및 그리기 (알 수 없는 맵이면 Ascent 기본 지정)
+        // 배경 맵 이미지 로드 및 그리기
         const bgUrl = MAP_IMAGES[mapName] || MAP_IMAGES["Ascent"];
         const bg = await loadImage(bgUrl);
-        ctx.drawImage(bg, 0, -50, 800, 550); // 이미지가 꽉 차도록 오프셋 조절
+        ctx.drawImage(bg, 0, -50, 800, 550);
 
-        // 반투명한 검은색 둥근 배경 박스 그리기
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-        drawRoundRect(ctx, 40, 40, 720, 370, 20);
+        // 반투명한 검은색 배경 박스
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+        drawRoundRect(ctx, 40, 30, 720, 390, 20);
 
-        // 유저 닉네임 텍스트
+        // 닉네임
         ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 45px sans-serif';
-        ctx.fillText(`${name} #${tag}`, 80, 110);
+        ctx.font = 'bold 38px sans-serif';
+        ctx.fillText(`${name} #${tag}`, 70, 85);
 
-        // 최근 맵 이름 텍스트
-        ctx.fillStyle = '#cccccc';
-        ctx.font = '24px sans-serif';
-        ctx.fillText(`최근 플레이 맵: ${mapName}`, 80, 155);
+        // 최근 맵 이름 (영문 표기로 폰트 깨짐 방지)
+        ctx.fillStyle = '#aaaaaa';
+        ctx.font = '20px sans-serif';
+        ctx.fillText(`Recent Map: ${mapName}`, 70, 120);
 
-        // 티어 아이콘 그리기
+        // 승리/패배 상태 표시
+        ctx.fillStyle = resultColor;
+        ctx.font = 'bold 22px sans-serif';
+        ctx.fillText(resultStr, 610, 85);
+
+        // 티어 아이콘
         try {
           const tierIcon = await loadImage(mmrData.images.large);
-          ctx.drawImage(tierIcon, 80, 190, 150, 150);
+          ctx.drawImage(tierIcon, 70, 145, 120, 120);
         } catch (e) { console.log('티어 이미지 로드 실패'); }
 
-        // 티어 텍스트 및 점수
+        // 티어 이름 및 랭크 점수(RR)
         ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 50px sans-serif';
-        ctx.fillText(`${mmrData.currenttierpatched}`, 260, 255);
+        ctx.font = 'bold 32px sans-serif';
+        ctx.fillText(`${mmrData.currenttierpatched}`, 210, 190);
 
-        ctx.fillStyle = '#ff4655'; // 발로란트 레드 포인트 컬러
-        ctx.font = 'bold 36px sans-serif';
-        ctx.fillText(`${mmrData.ranking_in_tier} 점 (RR)`, 260, 310);
+        ctx.fillStyle = '#ff4655';
+        ctx.font = 'bold 26px sans-serif';
+        ctx.fillText(`${mmrData.ranking_in_tier} RR`, 210, 230);
 
-        // 결과물 이미지 파일로 변환하여 디스코드로 전송
+        // 구분선
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(70, 285);
+        ctx.lineTo(730, 285);
+        ctx.stroke();
+
+        // KDA 통계 표시
+        ctx.fillStyle = '#aaaaaa';
+        ctx.font = '16px sans-serif';
+        ctx.fillText('RECENT KDA', 70, 320);
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 24px sans-serif';
+        ctx.fillText(kdaStr, 70, 355);
+
+        // 헤드샷 비율 표시
+        ctx.fillStyle = '#aaaaaa';
+        ctx.font = '16px sans-serif';
+        ctx.fillText('HEADSHOT', 500, 320);
+        ctx.fillStyle = '#00d26a';
+        ctx.font = 'bold 24px sans-serif';
+        ctx.fillText(hsStr, 500, 355);
+
+        // 디스코드로 이미지 전송
         const attachment = new AttachmentBuilder(canvas.toBuffer('image/png'), { name: 'valorant-stats.png' });
         await interaction.editReply({ content: `**${name}**님의 최근 전적 카드입니다.`, files: [attachment] });
       } else {
         await interaction.editReply('전적 데이터를 가져오지 못했습니다. 최근 경쟁전 기록이 있는지 확인해 주세요.');
       }
     } catch (error) {
+      console.error(error);
       await interaction.editReply('❌ 전적을 찾을 수 없거나 오류가 발생했습니다.');
     }
   }
