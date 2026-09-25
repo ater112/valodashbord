@@ -5,7 +5,7 @@ const axios = require('axios');
 const cron = require('node-cron');
 const mongoose = require('mongoose');
 const { Client, GatewayIntentBits, REST, Routes, EmbedBuilder, AttachmentBuilder } = require('discord.js');
-const { createCanvas, loadImage } = require('canvas'); // 이미지 생성 라이브러리 추가
+const { createCanvas, loadImage } = require('@napi-rs/canvas'); // 이미지 생성 라이브러리 추가
 
 const app = express();
 app.use(cors());
