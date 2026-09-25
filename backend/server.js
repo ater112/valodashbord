@@ -88,7 +88,6 @@ cron.schedule('*/5 * * * *', async () => {
 // ==========================================
 // 4. 디스코드 봇 (슬래시 명령어 전체)
 // ==========================================
-// 음성 채널 감지를 위해 GuildVoiceStates 권한 추가
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates] });
 const rest = new REST({ version: '10' }).setToken(DISCORD_BOT_TOKEN);
 
@@ -142,7 +141,6 @@ client.on('interactionCreate', async interaction => {
   if (!interaction.isChatInputCommand()) return;
   const { commandName } = interaction;
 
-  // 1. /전적 명령어
   if (commandName === '전적') {
     await interaction.deferReply(); 
     const name = interaction.options.getString('닉네임');
@@ -194,13 +192,14 @@ client.on('interactionCreate', async interaction => {
         ctx.fillStyle = resultColor;
         ctx.fillRect(35, 25, 730, 6);
 
+        // 닉네임 한글 깨짐 방지를 위해 영어 태그와 함께 깔끔하게 표기
         ctx.fillStyle = '#ffffff';
         ctx.font = 'bold 36px sans-serif';
-        ctx.fillText(`${name} #${tag}`, 65, 85);
+        ctx.fillText(`VALORANT PLAYER`, 65, 85);
 
         ctx.fillStyle = '#94a3b8';
         ctx.font = '18px sans-serif';
-        ctx.fillText(`MAP: ${mapName}   |   AGENT: ${agentName}`, 65, 118);
+        ctx.fillText(`RIOT ID: ${name} #${tag}   |   MAP: ${mapName}   |   AGENT: ${agentName}`, 65, 118);
 
         ctx.fillStyle = resultColor;
         ctx.font = 'bold 22px sans-serif';
@@ -250,7 +249,6 @@ client.on('interactionCreate', async interaction => {
     }
   }
 
-  // 2. /헤샷순위 명령어
   else if (commandName === '헤샷순위') {
     await interaction.deferReply();
     try {
@@ -266,7 +264,6 @@ client.on('interactionCreate', async interaction => {
     }
   }
 
-  // 3. /킬뎃순위 명령어
   else if (commandName === '킬뎃순위') {
     await interaction.deferReply();
     try {
@@ -282,7 +279,6 @@ client.on('interactionCreate', async interaction => {
     }
   }
 
-  // 4. /이번주의버스기사 명령어
   else if (commandName === '이번주의버스기사') {
     await interaction.deferReply();
     try {
@@ -299,7 +295,6 @@ client.on('interactionCreate', async interaction => {
     }
   }
 
-  // 5. /팀랜덤배정 명령어
   else if (commandName === '팀랜덤배정') {
     await interaction.deferReply();
     try {
@@ -310,16 +305,13 @@ client.on('interactionCreate', async interaction => {
         return interaction.editReply('⚠️ 먼저 음성 채널에 접속한 상태에서 명령어를 사용해 주세요!');
       }
 
-      // 음성 채널에 있는 유저 목록 가져오기 (봇 제외)
       const members = Array.from(voiceChannel.members.values()).filter(m => !m.user.bot);
 
       if (members.length < 2) {
         return interaction.editReply('⚠️ 내전을 진행하려면 음성 채널에 최소 2명 이상이 있어야 합니다!');
       }
 
-      // 무작위로 섞기 (Shuffle)
       const shuffled = members.sort(() => Math.random() - 0.5);
-      
       const midPoint = Math.ceil(shuffled.length / 2);
       const attackTeam = shuffled.slice(0, midPoint);
       const defenseTeam = shuffled.slice(midPoint);
