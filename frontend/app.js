@@ -1,4 +1,4 @@
-const API_BASE_URL = 'http://localhost:5000/api';
+const API_BASE_URL = 'https://valodashbord.onrender.com';
 let currentUserId = null;
 
 // 1. 디스코드 로그인 페이지 이동
