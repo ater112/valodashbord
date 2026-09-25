@@ -133,7 +133,8 @@ client.once('ready', async () => {
     { name: '헤샷순위', description: '웹 대시보드에 연동된 유저들의 헤드샷 명중률 순위를 보여줍니다.' },
     { name: '킬뎃순위', description: '웹 대시보드에 연동된 유저들의 KDA 순위를 보여줍니다.' },
     { name: '이번주의버스기사', description: '이번 주에 가장 높은 KDA를 기록한 최고의 버스 기사를 발표합니다!' },
-    { name: '팀랜덤배정', description: '현재 본인이 접속해 있는 음성 채널 인원을 공/수 팀으로 무작위 배정합니다.' }
+    { name: '팀랜덤배정', description: '현재 본인이 접속해 있는 음성 채널 인원을 공/수 팀으로 무작위 배정합니다.' },
+    { name: '운빨테스트', description: '오늘 나의 발로란트 경쟁전 운세와 승률 예측치를 테스트합니다!' }
   ]});
 });
 
@@ -141,6 +142,7 @@ client.on('interactionCreate', async interaction => {
   if (!interaction.isChatInputCommand()) return;
   const { commandName } = interaction;
 
+  // 1. /전적 명령어
   if (commandName === '전적') {
     await interaction.deferReply(); 
     const name = interaction.options.getString('닉네임');
@@ -192,7 +194,6 @@ client.on('interactionCreate', async interaction => {
         ctx.fillStyle = resultColor;
         ctx.fillRect(35, 25, 730, 6);
 
-        // 닉네임 한글 깨짐 방지를 위해 영어 태그와 함께 깔끔하게 표기
         ctx.fillStyle = '#ffffff';
         ctx.font = 'bold 36px sans-serif';
         ctx.fillText(`VALORANT PLAYER`, 65, 85);
@@ -240,7 +241,7 @@ client.on('interactionCreate', async interaction => {
         ctx.fillText(hsStr, 470, 358);
 
         const attachment = new AttachmentBuilder(canvas.toBuffer('image/png'), { name: 'valorant-stats.png' });
-        await interaction.editReply({ content: `✨ **${name}**님의 프리미엄 전적 카드입니다.`, files: [attachment] });
+        await interaction.editReply({ content: `✨ **${name}**님의 전적 카드입니다.`, files: [attachment] });
       } else {
         await interaction.editReply('❌ 전적 데이터를 가져오지 못했습니다.');
       }
@@ -249,6 +250,7 @@ client.on('interactionCreate', async interaction => {
     }
   }
 
+  // 2. /헤샷순위 명령어
   else if (commandName === '헤샷순위') {
     await interaction.deferReply();
     try {
@@ -264,6 +266,7 @@ client.on('interactionCreate', async interaction => {
     }
   }
 
+  // 3. /킬뎃순위 명령어
   else if (commandName === '킬뎃순위') {
     await interaction.deferReply();
     try {
@@ -279,6 +282,7 @@ client.on('interactionCreate', async interaction => {
     }
   }
 
+  // 4. /이번주의버스기사 명령어
   else if (commandName === '이번주의버스기사') {
     await interaction.deferReply();
     try {
@@ -295,6 +299,7 @@ client.on('interactionCreate', async interaction => {
     }
   }
 
+  // 5. /팀랜덤배정 명령어
   else if (commandName === '팀랜덤배정') {
     await interaction.deferReply();
     try {
@@ -329,6 +334,37 @@ client.on('interactionCreate', async interaction => {
       await interaction.editReply({ embeds: [embed] });
     } catch (error) {
       await interaction.editReply('❌ 팀을 배정하는 중 오류가 발생했습니다.');
+    }
+  }
+
+  // 6. /운빨테스트 명령어
+  else if (commandName === '운빨테스트') {
+    await interaction.deferReply();
+    try {
+      const luckScore = Math.floor(Math.random() * 51) + 50; // 50% ~ 100% 사이의 승률
+      const agents = ["제트 (Jett)", "레이나 (Reyna)", "오멘 (Omen)", "바이퍼 (Viper)", "소바 (Sova)", "킬조이 (Killjoy)", "체임버 (Chamber)", "클로브 (Clove)", "아이소 (Iso)"];
+      const randomAgent = agents[Math.floor(Math.random() * agents.length)];
+
+      let comment = "";
+      if (luckScore >= 90) comment = "🔥 에임 핵급 컨디션! 오늘 경쟁전 돌리면 바로 연승 직행입니다.";
+      else if (luckScore >= 75) comment = "✨ 감이 아주 좋습니다! 팀원을 캐리할 수 있는 기회입니다.";
+      else if (luckScore >= 60) comment = "👍 평범한 판입니다. 무난하게 1인분 이상 할 수 있어요!";
+      else comment = "⚠️ 오늘은 살짝 위험합니다... 조용히 아군 버스에 탑승하세요.";
+
+      const embed = new EmbedBuilder()
+        .setColor('#a855f7') // 보라색 포인터
+        .setTitle('🔮 오늘의 발로란트 운빨 테스트')
+        .setDescription(`**${interaction.user.username}**님의 오늘 경쟁전 운세 결과입니다!\n`)
+        .addFields(
+          { name: '📊 예상 승률', value: `**${luckScore}%**`, inline: true },
+          { name: '👤 행운의 요원', value: `**${randomAgent}**`, inline: true },
+          { name: '💬 오늘의 한줄 평', value: comment, inline: false }
+        )
+        .setFooter({ text: '운세는 운세일 뿐, 실력으로 극복해 보세요!' });
+
+      await interaction.editReply({ embeds: [embed] });
+    } catch (error) {
+      await interaction.editReply('❌ 운빨 테스트를 진행하는 중 오류가 발생했습니다.');
     }
   }
 });
