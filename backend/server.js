@@ -4,13 +4,17 @@ const cors = require('cors');
 const axios = require('axios');
 const cron = require('node-cron');
 const mongoose = require('mongoose');
-const { Client, GatewayIntentBits, REST, Routes, EmbedBuilder, AttachmentBuilder } = require('discord.js');
-const { createCanvas, loadImage } = require('@napi-rs/canvas');
-const { createCanvas, loadImage, GlobalFonts } = require('@napi-rs/canvas');
 const path = require('path');
+const { Client, GatewayIntentBits, REST, Routes, EmbedBuilder, AttachmentBuilder } = require('discord.js');
+const { createCanvas, loadImage, GlobalFonts } = require('@napi-rs/canvas'); // 중복 선언 방지 통합
 
-// 프로젝트 폴더 내의 맑은 고딕 폰트 등록
-GlobalFonts.registerFromPath(path.join(__dirname, 'fonts/malgun.ttf'), 'MalgunGothic');
+// 맑은 고딕 한글 폰트 등록
+try {
+  GlobalFonts.registerFromPath(path.join(__dirname, 'fonts/malgun.ttf'), 'MalgunGothic');
+  console.log('한글 폰트(MalgunGothic) 등록 완료');
+} catch (e) {
+  console.log('폰트 파일 로드 실패 (fonts/malgun.ttf 경로를 확인해주세요)');
+}
 
 const app = express();
 app.use(cors());
@@ -91,7 +95,7 @@ cron.schedule('*/5 * * * *', async () => {
 });
 
 // ==========================================
-// 4. 디스코드 봇 (슬래시 명령어 전체)
+// 4. 디스코드 봇 (슬래시 명령어 전체 - 한글 전적 카드 포함)
 // ==========================================
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 const rest = new REST({ version: '10' }).setToken(DISCORD_BOT_TOKEN);
@@ -143,10 +147,8 @@ client.once('ready', async () => {
 
 client.on('interactionCreate', async interaction => {
   if (!interaction.isChatInputCommand()) return;
-
   const { commandName } = interaction;
 
-  // 1. /전적 명령어 (개인 이미지 카드)
   if (commandName === '전적') {
     await interaction.deferReply(); 
     const name = interaction.options.getString('닉네임');
@@ -165,7 +167,7 @@ client.on('interactionCreate', async interaction => {
         
         let kdaStr = "0 / 0 / 0 (0.00)";
         let hsStr = "0%";
-        let resultStr = "VICTORY";
+        let resultStr = "승리";
         let resultColor = "#00d26a";
 
         if (playerData) {
@@ -178,7 +180,7 @@ client.on('interactionCreate', async interaction => {
           hsStr = `${hsPerc}%`;
 
           const isWin = matchData.teams[playerData.team.toLowerCase()]?.has_won || false;
-          resultStr = isWin ? "VICTORY" : "DEFEAT";
+          resultStr = isWin ? "승리" : "패배";
           resultColor = isWin ? "#00d26a" : "#ff4655";
         }
 
@@ -192,17 +194,20 @@ client.on('interactionCreate', async interaction => {
         ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
         drawRoundRect(ctx, 40, 30, 720, 390, 20);
 
+        // 닉네임 (한글 폰트 적용)
         ctx.fillStyle = '#ffffff';
         ctx.font = 'bold 38px MalgunGothic';
         ctx.fillText(`${name} #${tag}`, 70, 85);
 
+        // 최근 맵 이름 (한글)
         ctx.fillStyle = '#aaaaaa';
         ctx.font = '20px MalgunGothic';
-        ctx.fillText(`Recent Map: ${mapName}`, 70, 120);
+        ctx.fillText(`최근 맵: ${mapName}`, 70, 120);
 
+        // 승리 / 패배
         ctx.fillStyle = resultColor;
         ctx.font = 'bold 22px MalgunGothic';
-        ctx.fillText(resultStr, 610, 85);
+        ctx.fillText(resultStr, 640, 85);
 
         try {
           const tierIcon = await loadImage(mmrData.images.large);
@@ -226,14 +231,14 @@ client.on('interactionCreate', async interaction => {
 
         ctx.fillStyle = '#aaaaaa';
         ctx.font = '16px MalgunGothic';
-        ctx.fillText('RECENT KDA', 70, 320);
+        ctx.fillText('최근 KDA', 70, 320);
         ctx.fillStyle = '#ffffff';
         ctx.font = 'bold 24px MalgunGothic';
         ctx.fillText(kdaStr, 70, 355);
 
         ctx.fillStyle = '#aaaaaa';
         ctx.font = '16px MalgunGothic';
-        ctx.fillText('HEADSHOT', 500, 320);
+        ctx.fillText('헤드샷 명중률', 500, 320);
         ctx.fillStyle = '#00d26a';
         ctx.font = 'bold 24px MalgunGothic';
         ctx.fillText(hsStr, 500, 355);
@@ -248,64 +253,46 @@ client.on('interactionCreate', async interaction => {
     }
   }
 
-  // 2. /헤샷순위 명령어
   else if (commandName === '헤샷순위') {
     await interaction.deferReply();
     try {
       const users = await User.find({ riotId: { $ne: null } }).sort({ 'stats.hsPercentage': -1 });
-      if (users.length === 0) {
-        return interaction.editReply('⚠️ 아직 대시보드에 연동된 유저가 없습니다!');
-      }
-
+      if (users.length === 0) return interaction.editReply('⚠️ 아직 대시보드에 연동된 유저가 없습니다!');
       const embed = new EmbedBuilder()
         .setColor('#00d26a')
-        .setTitle('🎯 서버 헤드샷 명중률 순위 (Top 연동 유저)')
-        .setDescription(users.map((u, i) => `**${i + 1}위** | ${u.username} (${u.riotId}#${u.tagLine}) — **${u.stats?.hsPercentage || 0}%**`).join('\n'))
-        .setFooter({ text: 'ValoDashboard 연동 기준' });
-
+        .setTitle('🎯 서버 헤드샷 명중률 순위')
+        .setDescription(users.map((u, i) => `**${i + 1}위** | ${u.username} (${u.riotId}#${u.tagLine}) — **${u.stats?.hsPercentage || 0}%**`).join('\n'));
       await interaction.editReply({ embeds: [embed] });
     } catch (error) {
       await interaction.editReply('❌ 순위를 불러오는 중 오류가 발생했습니다.');
     }
   }
 
-  // 3. /킬뎃순위 명령어
   else if (commandName === '킬뎃순위') {
     await interaction.deferReply();
     try {
       const users = await User.find({ riotId: { $ne: null } }).sort({ 'stats.kda': -1 });
-      if (users.length === 0) {
-        return interaction.editReply('⚠️ 아직 대시보드에 연동된 유저가 없습니다!');
-      }
-
+      if (users.length === 0) return interaction.editReply('⚠️ 아직 대시보드에 연동된 유저가 없습니다!');
       const embed = new EmbedBuilder()
         .setColor('#ff4655')
-        .setTitle('⚔️ 서버 KDA 순위 (Top 연동 유저)')
-        .setDescription(users.map((u, i) => `**${i + 1}위** | ${u.username} (${u.riotId}#${u.tagLine}) — **KDA ${u.stats?.kda || 0}점**`).join('\n'))
-        .setFooter({ text: 'ValoDashboard 연동 기준' });
-
+        .setTitle('⚔️ 서버 KDA 순위')
+        .setDescription(users.map((u, i) => `**${i + 1}위** | ${u.username} (${u.riotId}#${u.tagLine}) — **KDA ${u.stats?.kda || 0}점**`).join('\n'));
       await interaction.editReply({ embeds: [embed] });
     } catch (error) {
       await interaction.editReply('❌ 순위를 불러오는 중 오류가 발생했습니다.');
     }
   }
 
-  // 4. /이번주의버스기사 명령어
   else if (commandName === '이번주의버스기사') {
     await interaction.deferReply();
     try {
       const users = await User.find({ riotId: { $ne: null } }).sort({ 'stats.kda': -1 });
-      if (users.length === 0 || !users[0].riotId) {
-        return interaction.editReply('⚠️ 연동된 유저가 없어 버스 기사를 선정할 수 없습니다!');
-      }
-
-      const driver = users[0]; // KDA가 가장 높은 유저
+      if (users.length === 0 || !users[0].riotId) return interaction.editReply('⚠️ 연동된 유저가 없습니다!');
+      const driver = users[0];
       const embed = new EmbedBuilder()
-        .setColor('#ffd700') // 황금색
+        .setColor('#ffd700')
         .setTitle('👑 [이번 주 서버 최고의 버스 기사]')
-        .setDescription(`이번 주 가장 강력한 무력을 뽐낸 기사님은 바로...\n\n🎉 **${driver.username}** (${driver.riotId}#${driver.tagLine}) 님입니다!\n\n🔥 **기록된 평균 KDA:** **${driver.stats?.kda || 0}점**`)
-        .setFooter({ text: '팀원을 승리로 이끄는 당신이 진정한 버스 기사!' });
-
+        .setDescription(`이번 주 가장 강력한 기사님은 바로...\n\n🎉 **${driver.username}** (${driver.riotId}#${driver.tagLine}) 님입니다!\n\n🔥 **평균 KDA:** **${driver.stats?.kda || 0}점**`);
       await interaction.editReply({ embeds: [embed] });
     } catch (error) {
       await interaction.editReply('❌ 버스 기사를 선정하는 중 오류가 발생했습니다.');
@@ -314,5 +301,4 @@ client.on('interactionCreate', async interaction => {
 });
 
 client.login(DISCORD_BOT_TOKEN);
-
 app.listen(5000, () => console.log('Backend server running on port 5000'));
